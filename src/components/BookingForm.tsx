@@ -9,7 +9,7 @@ interface Props {
   rooms: Room[]
   settings: Settings
   meId: string
-  initial: { roomId: string; day: string; start: number }
+  initial: { roomId: string; day: string; start: number; end: number }
   /** Reservas já carregadas do dia exibido, para avisar conflito antes de enviar */
   knownBookings: { day: string; items: Booking[] }
   onClose: () => void
@@ -24,12 +24,16 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
 
   const [roomId, setRoomId] = useState(initial.roomId)
   const [day, setDay] = useState(initial.day)
-  const [start, setStart] = useState(initial.start)
-  const [end, setEnd] = useState(Math.min(initial.start + step, close))
+  // Guardamos o texto "HH:MM" do campo para permitir digitação livre (ex.: 09:07)
+  const [startText, setStartText] = useState(minutesToLabel(initial.start))
+  const [endText, setEndText] = useState(minutesToLabel(initial.end))
+  const start = parseTime(startText)
+  const end = parseTime(endText)
   const [subject, setSubject] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Sugestões de 30 em 30 minutos; qualquer outro horário pode ser digitado
   const startOptions = useMemo(() => {
     const out: number[] = []
     for (let m = open; m < close; m += step) out.push(m)
@@ -38,14 +42,17 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
 
   const endOptions = useMemo(() => {
     const out: number[] = []
-    for (let m = start + step; m <= close; m += step) out.push(m)
+    for (let m = open + step; m <= close; m += step) if (start === null || m > start) out.push(m)
     return out
-  }, [start, close, step])
+  }, [open, start, close, step])
 
-  function changeStart(v: number) {
-    const duration = end - start
-    setStart(v)
-    setEnd(Math.min(v + Math.max(duration, step), close))
+  function changeStart(text: string) {
+    const next = parseTime(text)
+    // mantém a duração da reunião ao mudar o início
+    if (next !== null && start !== null && end !== null && end > start) {
+      setEndText(minutesToLabel(Math.min(next + (end - start), close)))
+    }
+    setStartText(text)
   }
 
   function validate(): string | null {
@@ -53,6 +60,11 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
     if (!day) return 'Escolha a data.'
     if (isoWeekday(day) > 5) return 'As reservas só podem ser feitas de segunda a sexta.'
     if (day < today) return 'Não é possível reservar um horário que já passou.'
+    if (start === null) return 'Informe o horário de início (ex.: 09:10).'
+    if (end === null) return 'Informe o horário de fim (ex.: 09:45).'
+    if (start < open || end > close) {
+      return `Horário fora do funcionamento (das ${minutesToLabel(open)} às ${minutesToLabel(close)}).`
+    }
     const nowMin = utcToZoned(new Date(), tz).minutes
     if (day === today && start <= nowMin) return 'Não é possível reservar um horário que já passou.'
     if (end <= start) return 'O fim precisa ser depois do início.'
@@ -78,6 +90,7 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
     e.preventDefault()
     const v = validate()
     if (v) return setError(v)
+    if (start === null || end === null) return
     setBusy(true)
     setError(null)
     const { error } = await supabase.from('bookings').insert({
@@ -129,21 +142,47 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
         <div className="row-2">
           <label className="field">
             <span>Início</span>
-            <select className="select" value={start} onChange={(e) => changeStart(Number(e.target.value))}>
+            <input
+              className="input"
+              type="time"
+              step={60}
+              min={minutesToLabel(open)}
+              max={minutesToLabel(close)}
+              list="start-options"
+              value={startText}
+              onChange={(e) => changeStart(e.target.value)}
+              required
+            />
+            <datalist id="start-options">
               {startOptions.map((m) => (
-                <option key={m} value={m}>{minutesToLabel(m)}</option>
+                <option key={m} value={minutesToLabel(m)} />
               ))}
-            </select>
+            </datalist>
           </label>
           <label className="field">
             <span>Fim</span>
-            <select className="select" value={end} onChange={(e) => setEnd(Number(e.target.value))}>
+            <input
+              className="input"
+              type="time"
+              step={60}
+              min={minutesToLabel(open)}
+              max={minutesToLabel(close)}
+              list="end-options"
+              value={endText}
+              onChange={(e) => setEndText(e.target.value)}
+              required
+            />
+            <datalist id="end-options">
               {endOptions.map((m) => (
-                <option key={m} value={m}>{minutesToLabel(m)}</option>
+                <option key={m} value={minutesToLabel(m)} />
               ))}
-            </select>
+            </datalist>
           </label>
         </div>
+        <p className="small muted" style={{ margin: '-6px 0 0' }}>
+          Digite qualquer horário (ex.: 09:10 às 09:45) ou escolha uma das sugestões.
+          {start !== null && end !== null && end > start && ` Duração: ${formatDuration(end - start)}.`}
+        </p>
         <label className="field">
           <span>Assunto</span>
           <input
@@ -160,4 +199,21 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
       </form>
     </Modal>
   )
+}
+
+/** "09:07" -> 547; texto incompleto ou inválido -> null */
+function parseTime(text: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(text.trim())
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h > 23 || min > 59) return null
+  return h * 60 + min
+}
+
+function formatDuration(min: number) {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h === 0) return `${m} min`
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
 }

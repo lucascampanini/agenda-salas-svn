@@ -271,6 +271,9 @@ button, input, select { font: inherit; color: inherit; }
 .booking.is-compact .b-subject { flex: 0 1 auto; }
 .booking.is-compact .b-meta { flex: 1 1 0; }
 .booking.is-past { opacity: 0.62; }
+.booking.is-tiny { padding: 0 6px; border-radius: 4px; }
+.booking.is-tiny .b-subject { font-size: 11px; line-height: 1; }
+.booking.is-tiny .b-meta { font-size: 10.5px; line-height: 1; }
 
 .now-line { position: absolute; left: 0; right: 0; height: 0; border-top: 2px solid var(--now); z-index: 3; pointer-events: none; }
 .now-line.with-dot::before {

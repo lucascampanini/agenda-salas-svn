@@ -27,6 +27,12 @@ create table if not exists public.settings (
 
 insert into public.settings (id) values (true) on conflict (id) do nothing;
 
+-- Precisão dos horários de reserva, em minutos (1 = qualquer minuto: 09:07 às 09:43).
+-- slot_minutes acima só define o desenho da grade (linhas de 30 em 30).
+alter table public.settings
+  add column if not exists booking_step_minutes integer not null default 1
+  check (booking_step_minutes in (1, 5, 10, 15, 30, 60));
+
 -- ---------------------------------------------------------------------
 -- 2. Perfis (1:1 com auth.users)
 -- ---------------------------------------------------------------------
@@ -77,7 +83,7 @@ create index if not exists bookings_user_starts_idx on public.bookings (user_id,
 
 -- ---------------------------------------------------------------------
 -- 5. Validação de regras de negócio no banco
---    (dias úteis, horário de funcionamento, blocos, nada no passado)
+--    (dias úteis, horário de funcionamento, precisão de minutos, nada no passado)
 -- ---------------------------------------------------------------------
 create or replace function public.validate_booking()
 returns trigger
@@ -88,13 +94,13 @@ declare
   s        public.settings;
   local_s  timestamp;
   local_e  timestamp;
-  slot_sec integer;
+  step_sec integer;
 begin
   select * into s from public.settings where id;
 
   local_s  := new.starts_at at time zone s.timezone;
   local_e  := new.ends_at   at time zone s.timezone;
-  slot_sec := s.slot_minutes * 60;
+  step_sec := s.booking_step_minutes * 60;
 
   if new.starts_at <= now() then
     raise exception 'Não é possível reservar um horário que já passou.';
@@ -111,9 +117,12 @@ begin
       to_char(s.open_time, 'HH24:MI'), to_char(s.close_time, 'HH24:MI');
   end if;
 
-  if extract(epoch from (local_s::time - s.open_time))::integer % slot_sec <> 0
-     or extract(epoch from (local_e::time - s.open_time))::integer % slot_sec <> 0 then
-    raise exception 'Início e fim devem seguir blocos de % minutos.', s.slot_minutes;
+  if extract(epoch from (local_s::time - s.open_time))::numeric % step_sec <> 0
+     or extract(epoch from (local_e::time - s.open_time))::numeric % step_sec <> 0 then
+    if s.booking_step_minutes = 1 then
+      raise exception 'Use horários em minutos cheios (sem segundos).';
+    end if;
+    raise exception 'Início e fim devem ser múltiplos de % minutos.', s.booking_step_minutes;
   end if;
 
   new.subject := btrim(new.subject);

@@ -2,7 +2,8 @@ export interface Settings {
   timezone: string
   open_time: string // "08:00:00"
   close_time: string // "18:00:00"
-  slot_minutes: number
+  slot_minutes: number // linhas da grade
+  booking_step_minutes: number // precisão das reservas (1 = qualquer minuto)
 }
 
 export interface Profile {
@@ -36,4 +37,5 @@ export const DEFAULT_SETTINGS: Settings = {
   open_time: '08:00:00',
   close_time: '18:00:00',
   slot_minutes: 30,
+  booking_step_minutes: 1,
 }

@@ -9,7 +9,7 @@ interface Props {
   bookings: Booking[]
   settings: Settings
   meId: string
-  onSlotClick: (roomId: string, startMinutes: number) => void
+  onSlotClick: (roomId: string, startMinutes: number, endMinutes: number) => void
   onBookingClick: (b: Booking) => void
 }
 
@@ -56,17 +56,44 @@ export function DayGrid({ day, todayYmd, nowMinutes, rooms, bookings, settings, 
 
         {rooms.map((room) => {
           const roomBookings = bookings.filter((b) => b.room_id === room.id)
+          const ranges = roomBookings.map((b) => ({
+            s: utcToZoned(new Date(b.starts_at), settings.timezone).minutes,
+            e: utcToZoned(new Date(b.ends_at), settings.timezone).minutes,
+          }))
+
+          // Ao clicar num bloco, sugere o primeiro minuto livre dentro dele
+          // (depois da hora atual e de reservas que ocupam só parte do bloco).
+          const suggest = (m: number) => {
+            let start = m
+            if (isToday && start <= nowMinutes) start = Math.floor(nowMinutes) + 1
+            for (let moved = true; moved; ) {
+              moved = false
+              for (const r of ranges) {
+                if (r.s <= start && start < r.e) {
+                  start = Math.ceil(r.e)
+                  moved = true
+                }
+              }
+            }
+            if (start >= m + step || start >= close) return null
+            const nextBooking = Math.min(close, ...ranges.filter((r) => r.s > start).map((r) => r.s))
+            return { start, end: Math.min(start + step, nextBooking) }
+          }
+
           return (
             <div key={room.id} className="grid-col" style={{ height: span(slots.length * step) }}>
               {slots.map((m) => {
-                const past = isPastDay || (isToday && m <= nowMinutes)
+                const past = isPastDay || (isToday && m + step <= nowMinutes)
                 const label = `${room.name}, ${minutesToLabel(m)}`
                 return (
                   <button
                     key={m}
                     className={`slot ${m % 60 === 0 ? 'is-hour' : ''}`}
                     disabled={past}
-                    onClick={() => onSlotClick(room.id, m)}
+                    onClick={() => {
+                      const free = suggest(m)
+                      if (free) onSlotClick(room.id, free.start, free.end)
+                    }}
                     aria-label={past ? `${label} (indisponível)` : `Reservar ${label}`}
                   />
                 )
@@ -79,13 +106,14 @@ export function DayGrid({ day, todayYmd, nowMinutes, rooms, bookings, settings, 
                 const to = Math.min(e, close)
                 const mine = b.user_id === meId
                 const compact = e - s <= step
+                const tiny = e - s < step / 2
                 const ended = isPastDay || (isToday && e <= nowMinutes)
                 const who = mine ? 'Você' : b.profiles?.full_name ?? '—'
                 return (
                   <button
                     key={b.id}
-                    className={`booking ${mine ? 'is-mine' : ''} ${compact ? 'is-compact' : ''} ${ended ? 'is-past' : ''}`}
-                    style={{ top: at(from, 2), height: span(to - from, -4) }}
+                    className={`booking ${mine ? 'is-mine' : ''} ${compact ? 'is-compact' : ''} ${tiny ? 'is-tiny' : ''} ${ended ? 'is-past' : ''}`}
+                    style={tiny ? { top: at(from, 0.5), height: span(to - from, -1) } : { top: at(from, 2), height: span(to - from, -4) }}
                     onClick={() => onBookingClick(b)}
                     title={`${b.subject} — ${minutesToLabel(s)}–${minutesToLabel(e)} — ${b.profiles?.full_name ?? ''}`}
                   >

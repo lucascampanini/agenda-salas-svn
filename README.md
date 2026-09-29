@@ -7,7 +7,7 @@ O Supabase cuida do banco, do login, do tempo real e da Edge Function `admin-use
 As regras críticas moram **no banco**, não só na tela:
 
 - **Sem sobreposição:** exclusion constraint `bookings_no_overlap` (btree_gist + `tstzrange &&`).
-- **Dias e horários válidos:** o trigger `validate_booking` só aceita segunda a sexta, dentro do horário de funcionamento, em blocos certos e nunca no passado.
+- **Dias e horários válidos:** o trigger `validate_booking` só aceita segunda a sexta, dentro do horário de funcionamento e nunca no passado. Qualquer minuto é aceito (ex.: 09:07 às 09:43); a grade só é desenhada de 30 em 30.
 - **Permissões:** Row Level Security. Usuário comum só cria e cancela as próprias reservas; só admin mexe em salas; perfis só mudam pela Edge Function `admin-users`, que confere se quem chama é admin e usa a service role key dentro do Supabase. A chave nunca vai para o navegador.
 
 ## Cadastrar usuários
@@ -41,8 +41,12 @@ O horário fica na tabela `settings` (uma linha só). No **SQL Editor** do Supab
 -- Exemplo: das 07:30 às 19:00
 update public.settings set open_time = '07:30', close_time = '19:00';
 
--- Blocos de 15 minutos em vez de 30 (valores aceitos: 10, 15, 20, 30, 60)
+-- Linhas da grade de 15 em 15 minutos em vez de 30 (aceitos: 10, 15, 20, 30, 60)
 update public.settings set slot_minutes = 15;
+
+-- Precisão das reservas. Padrão: 1 = qualquer minuto (ex.: 09:07 às 09:43).
+-- Para exigir horários de 5 em 5 minutos (aceitos: 1, 5, 10, 15, 30, 60):
+update public.settings set booking_step_minutes = 5;
 
 -- Conferir
 select * from public.settings;

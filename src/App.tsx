@@ -105,7 +105,7 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
 
-  const [creating, setCreating] = useState<{ roomId: string; day: string; start: number } | null>(null)
+  const [creating, setCreating] = useState<{ roomId: string; day: string; start: number; end: number } | null>(null)
   const [selected, setSelected] = useState<Booking | null>(null)
   const [toast, setToast] = useState<{ text: string; kind: 'ok' | 'error'; id: number } | null>(null)
 
@@ -124,7 +124,7 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
   const load = useCallback(async () => {
     const d = dayRef.current
     const [st, rm, bk, up, pf] = await Promise.all([
-      supabase.from('settings').select('timezone, open_time, close_time, slot_minutes').maybeSingle(),
+      supabase.from('settings').select('timezone, open_time, close_time, slot_minutes, booking_step_minutes').maybeSingle(),
       supabase.from('rooms').select('id, name, position').order('position').order('name'),
       supabase
         .from('bookings')
@@ -300,7 +300,7 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
                   bookings={bookings}
                   settings={settings}
                   meId={me.id}
-                  onSlotClick={(roomId, start) => setCreating({ roomId, day, start })}
+                  onSlotClick={(roomId, start, end) => setCreating({ roomId, day, start, end })}
                   onBookingClick={setSelected}
                 />
               </section>
