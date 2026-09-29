@@ -16,6 +16,7 @@ import {
   zonedToUtc,
 } from './lib/time'
 import { Login } from './components/Login'
+import { InviteSignup } from './components/InviteSignup'
 import { DayGrid } from './components/DayGrid'
 import { BookingForm } from './components/BookingForm'
 import { BookingDetails } from './components/BookingDetails'
@@ -48,6 +49,13 @@ export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [profile, setProfile] = useState<Profile | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  // Link de convite: https://.../agenda-salas-svn/?convite=CÓDIGO
+  const [inviteCode, setInviteCode] = useState(() => new URLSearchParams(window.location.search).get('convite'))
+
+  function leaveInvite() {
+    window.history.replaceState(null, '', import.meta.env.BASE_URL)
+    setInviteCode(null)
+  }
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setSession(data.session))
@@ -65,7 +73,11 @@ export default function App() {
       .maybeSingle()
       .then(({ data }) => {
         if (!data || !data.active) {
-          setNotice('Seu acesso está desativado ou ainda não foi liberado. Fale com um administrador.')
+          setNotice(
+            data?.pending
+              ? 'Seu cadastro foi recebido e está aguardando a aprovação de um administrador. Tente de novo mais tarde.'
+              : 'Seu acesso está desativado. Fale com um administrador.',
+          )
           supabase.auth.signOut()
           return
         }
@@ -82,6 +94,7 @@ export default function App() {
     )
   }
   if (session === undefined) return <div className="center-msg">Carregando…</div>
+  if (!session && inviteCode) return <InviteSignup code={inviteCode} onDone={leaveInvite} />
   if (!session) return <Login notice={notice} />
   if (!profile) return <div className="center-msg">Carregando…</div>
   return <Agenda me={profile} onProfileChange={setProfile} />
@@ -188,6 +201,7 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
     if (!me.is_admin && view === 'admin') setView('agenda')
   }, [me.is_admin, view])
 
+  const pendingCount = me.is_admin ? profiles.filter((p) => p.pending).length : 0
   const today = todayYmd(tz)
   const nowMinutes = utcToZoned(now, tz).minutes
   const days = weekDays(day)
@@ -222,6 +236,9 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
               onClick={() => setView(view === 'admin' ? 'agenda' : 'admin')}
             >
               <IconSettings /> <span>Admin</span>
+              {pendingCount > 0 && (
+                <span className="count-badge" aria-label={`${pendingCount} cadastro(s) aguardando aprovação`}>{pendingCount}</span>
+              )}
             </button>
           )}
           <button

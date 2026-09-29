@@ -12,7 +12,15 @@ As regras críticas moram **no banco**, não só na tela:
 
 ## Cadastrar usuários
 
-O cadastro público fica desligado. Só um administrador cria contas.
+O cadastro público fica desligado. Há dois jeitos de dar acesso:
+
+**A) Link de convite (a pessoa se cadastra sozinha):**
+1. Em **Admin → Usuários → Link de convite**, clique em **Criar link de convite** e depois em **Copiar**.
+2. Mande o link aos colegas. Cada um preenche nome, e-mail e a senha que escolher.
+3. O pedido aparece em **Aguardando aprovação**, e o botão Admin mostra quantos pedidos há. Clique em **Aprovar** ou **Recusar**.
+4. **Gerar novo link** invalida o anterior; **Desligar link** encerra os cadastros.
+
+**B) Cadastro direto pelo admin:**
 
 1. Entre no site com uma conta de administrador e clique em **Admin → Usuários**.
 2. Em **Novo usuário**, preencha nome, e-mail e senha inicial (o botão **Gerar** cria uma senha aleatória). Marque **Administrador** se for o caso.
@@ -29,7 +37,7 @@ O primeiro administrador precisa ser criado pelo painel do Supabase:
 
    ```sql
    update public.profiles
-   set is_admin = true, full_name = 'Seu Nome'
+   set is_admin = true, active = true, pending = false, full_name = 'Seu Nome'
    where email = 'seu-email@svninvestimentos.com.br';
    ```
 

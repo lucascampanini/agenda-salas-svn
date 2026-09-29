@@ -15,7 +15,8 @@ interface Props {
 }
 
 export function AdminPanel({ rooms, profiles, meId, onBack, notify, reload }: Props) {
-  const [tab, setTab] = useState<'rooms' | 'users'>('rooms')
+  // abre direto em Usuários quando há cadastros aguardando aprovação
+  const [tab, setTab] = useState<'rooms' | 'users'>(() => (profiles.some((p) => p.pending) ? 'users' : 'rooms'))
   return (
     <div>
       <div className="admin-head">
@@ -183,9 +184,11 @@ function UsersAdmin({ profiles, meId, notify, reload }: Pick<Props, 'profiles' |
   const [pending, setPending] = useState<string | null>(null)
   const [pwdFor, setPwdFor] = useState<Profile | null>(null)
 
-  const sorted = [...profiles].sort(
-    (a, b) => Number(b.active) - Number(a.active) || a.full_name.localeCompare(b.full_name, 'pt-BR'),
-  )
+  const waiting = profiles.filter((p) => p.pending).sort((a, b) => a.created_at.localeCompare(b.created_at))
+  const sorted = profiles
+    .filter((p) => !p.pending)
+    .sort((a, b) => Number(b.active) - Number(a.active) || a.full_name.localeCompare(b.full_name, 'pt-BR'))
+  const [toReject, setToReject] = useState<Profile | null>(null)
 
   async function create(e: FormEvent) {
     e.preventDefault()
@@ -213,7 +216,37 @@ function UsersAdmin({ profiles, meId, notify, reload }: Pick<Props, 'profiles' |
   return (
     <div className="admin-grid">
       <section className="card admin-section">
-        <h2>Usuários ({profiles.filter((p) => p.active).length} ativos)</h2>
+        {waiting.length > 0 && (
+          <>
+            <h2>
+              Aguardando aprovação <span className="count-badge">{waiting.length}</span>
+            </h2>
+            <ul className="admin-list" style={{ marginBottom: 22 }}>
+              {waiting.map((p) => (
+                <li key={p.id}>
+                  <div className="grow">
+                    <div className="user-name">
+                      {p.full_name}
+                      <span className="badge badge-pending">Pendente</span>
+                    </div>
+                    <div className="muted small">
+                      {p.email} · pediu acesso em {new Date(p.created_at).toLocaleDateString('pt-BR')}
+                    </div>
+                  </div>
+                  <div className="inline-actions">
+                    <button className="btn btn-sm btn-primary" disabled={pending === p.id} onClick={() => act(p, { action: 'approve' }, `Acesso de ${p.full_name} liberado.`)}>
+                      Aprovar
+                    </button>
+                    <button className="btn btn-sm btn-danger" disabled={pending === p.id} onClick={() => setToReject(p)}>
+                      Recusar
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+        <h2>Usuários ({sorted.filter((p) => p.active).length} ativos)</h2>
         <ul className="admin-list">
           {sorted.map((p) => {
             const me = p.id === meId
@@ -260,6 +293,8 @@ function UsersAdmin({ profiles, meId, notify, reload }: Pick<Props, 'profiles' |
         </ul>
       </section>
 
+      <div className="stack" style={{ gap: 20 }}>
+      <InviteCard notify={notify} />
       <section className="card admin-section">
         <h2>Novo usuário</h2>
         <form className="stack" onSubmit={create}>
@@ -310,9 +345,108 @@ function UsersAdmin({ profiles, meId, notify, reload }: Pick<Props, 'profiles' |
           )}
         </form>
       </section>
+      </div>
 
       {pwdFor && <PasswordModal profile={pwdFor} onClose={() => setPwdFor(null)} notify={notify} />}
+
+      {toReject && (
+        <ConfirmDialog
+          title="Recusar cadastro?"
+          message={
+            <>
+              O pedido de <strong>{toReject.full_name}</strong> ({toReject.email}) será apagado. A pessoa não terá acesso.
+            </>
+          }
+          confirmLabel="Recusar e apagar"
+          busy={pending === toReject.id}
+          onConfirm={async () => {
+            await act(toReject, { action: 'reject' }, 'Cadastro recusado.')
+            setToReject(null)
+          }}
+          onCancel={() => setToReject(null)}
+        />
+      )}
     </div>
+  )
+}
+
+function randomCode() {
+  const arr = new Uint8Array(18)
+  crypto.getRandomValues(arr)
+  return Array.from(arr, (n) => n.toString(16).padStart(2, '0')).join('')
+}
+
+function InviteCard({ notify }: Pick<Props, 'notify'>) {
+  const [code, setCode] = useState<string | null | undefined>(undefined)
+  const [busy, setBusy] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('invite')
+      .select('code')
+      .maybeSingle()
+      .then(({ data }) => setCode(data?.code ?? null))
+  }, [])
+
+  const link = code ? `${window.location.origin}${import.meta.env.BASE_URL}?convite=${code}` : ''
+
+  async function save(next: string | null, msg: string) {
+    setBusy(true)
+    const { data, error } = await supabase
+      .from('invite')
+      .update({ code: next, updated_at: new Date().toISOString() })
+      .eq('id', true)
+      .select('code')
+    setBusy(false)
+    if (error) return notify(friendlyError(error), 'error')
+    if (!data?.length) return notify('Você não tem permissão para alterar o convite.', 'error')
+    setCode(next)
+    notify(msg)
+  }
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(link)
+      notify('Link copiado. Agora é só colar no WhatsApp ou no e-mail.')
+    } catch {
+      notify('Não consegui copiar automaticamente. Selecione o link e copie à mão.', 'error')
+    }
+  }
+
+  return (
+    <section className="card admin-section">
+      <h2>Link de convite</h2>
+      {code === undefined ? (
+        <p className="muted small">Carregando…</p>
+      ) : code ? (
+        <div className="stack">
+          <p className="muted small" style={{ margin: 0 }}>
+            Mande este link aos colegas. Cada um cria o próprio acesso, que só é liberado depois que você aprovar aqui.
+          </p>
+          <div className="invite-box">
+            <input className="input" value={link} readOnly onFocus={(e) => e.target.select()} aria-label="Link de convite" />
+            <button className="btn btn-primary" onClick={copy}>Copiar</button>
+          </div>
+          <div className="inline-actions">
+            <button className="btn btn-sm" disabled={busy} onClick={() => save(randomCode(), 'Novo link gerado. O link anterior não funciona mais.')}>
+              Gerar novo link
+            </button>
+            <button className="btn btn-sm btn-danger" disabled={busy} onClick={() => save(null, 'Link de convite desligado.')}>
+              Desligar link
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="stack">
+          <p className="muted small" style={{ margin: 0 }}>
+            Crie um link para os colegas se cadastrarem sozinhos. Todo cadastro precisa da sua aprovação.
+          </p>
+          <button className="btn btn-primary" disabled={busy} onClick={() => save(randomCode(), 'Link de convite criado.')}>
+            Criar link de convite
+          </button>
+        </div>
+      )}
+    </section>
   )
 }
 

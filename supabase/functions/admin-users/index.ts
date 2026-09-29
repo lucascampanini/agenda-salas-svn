@@ -21,6 +21,10 @@ type Body =
   | { action: 'set_admin'; user_id: string; is_admin: boolean }
   | { action: 'set_name'; user_id: string; full_name: string }
   | { action: 'reset_password'; user_id: string; password: string }
+  | { action: 'approve'; user_id: string }
+  | { action: 'reject'; user_id: string }
+
+type InviteSignup = { action: 'signup_with_invite'; code: string; email: string; password: string; full_name: string }
 
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
@@ -69,15 +73,20 @@ Deno.serve(async (req) => {
     auth: { persistSession: false, autoRefreshToken: false },
   })
 
-  const auth = await requireAdmin(admin, req)
-  if ('error' in auth) return auth.error
-
-  let body: Body
+  let raw: Body | InviteSignup
   try {
-    body = (await req.json()) as Body
+    raw = (await req.json()) as Body | InviteSignup
   } catch {
     return fail(400, 'Requisição inválida.')
   }
+
+  // Única ação sem login: cadastro pelo link de convite. A conta nasce
+  // pendente (sem acesso) até um administrador aprovar.
+  if (raw.action === 'signup_with_invite') return signupWithInvite(admin, raw)
+
+  const auth = await requireAdmin(admin, req)
+  if ('error' in auth) return auth.error
+  const body = raw
 
   switch (body.action) {
     case 'create': {
@@ -96,10 +105,10 @@ Deno.serve(async (req) => {
       })
       if (error || !data.user) return fail(400, translateAuthError(error?.message ?? 'Erro ao criar usuário.'))
 
-      // O perfil é criado pelo trigger on_auth_user_created; aqui só ajustamos nome/admin.
+      // O trigger cria o perfil sem acesso; como foi um admin que criou, liberamos aqui.
       const { error: profErr } = await admin
         .from('profiles')
-        .update({ full_name, is_admin: Boolean(body.is_admin) })
+        .update({ full_name, is_admin: Boolean(body.is_admin), active: true, pending: false })
         .eq('id', data.user.id)
       if (profErr) return fail(500, 'Usuário criado, mas houve erro ao salvar o perfil: ' + profErr.message)
 
@@ -114,7 +123,10 @@ Deno.serve(async (req) => {
         ban_duration: body.active ? 'none' : BAN_FOREVER,
       })
       if (error) return fail(400, error.message)
-      const { error: profErr } = await admin.from('profiles').update({ active: body.active }).eq('id', body.user_id)
+      const { error: profErr } = await admin
+        .from('profiles')
+        .update(body.active ? { active: true, pending: false } : { active: false })
+        .eq('id', body.user_id)
       if (profErr) return fail(500, profErr.message)
       return json(200, { ok: true })
     }
@@ -143,7 +155,55 @@ Deno.serve(async (req) => {
       return json(200, { ok: true })
     }
 
+    case 'approve': {
+      const { data, error } = await admin
+        .from('profiles')
+        .update({ active: true, pending: false })
+        .eq('id', body.user_id)
+        .eq('pending', true)
+        .select('id')
+      if (error) return fail(500, error.message)
+      if (!data?.length) return fail(404, 'Esse cadastro não está mais aguardando aprovação.')
+      return json(200, { ok: true })
+    }
+
+    case 'reject': {
+      const { data: prof } = await admin.from('profiles').select('pending').eq('id', body.user_id).single()
+      if (!prof?.pending) return fail(400, 'Só é possível recusar cadastros que aguardam aprovação.')
+      const { error } = await admin.auth.admin.deleteUser(body.user_id)
+      if (error) return fail(500, error.message)
+      return json(200, { ok: true })
+    }
+
     default:
       return fail(400, 'Ação desconhecida.')
   }
 })
+
+async function signupWithInvite(admin: SupabaseClient, body: InviteSignup) {
+  const code = String(body.code ?? '').trim()
+  const email = String(body.email ?? '').trim().toLowerCase()
+  const full_name = String(body.full_name ?? '').trim()
+  const password = String(body.password ?? '')
+
+  const { data: invite } = await admin.from('invite').select('code').eq('id', true).single()
+  if (!invite?.code || !code || invite.code !== code) {
+    return fail(403, 'Este link de convite não é mais válido. Peça um link novo a um administrador.')
+  }
+  if (!full_name) return fail(400, 'Informe o seu nome.')
+  if (full_name.length > 80) return fail(400, 'Nome muito longo.')
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail(400, 'E-mail inválido.')
+  if (password.length < 8) return fail(400, 'A senha precisa ter pelo menos 8 caracteres.')
+
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name },
+  })
+  if (error || !data.user) return fail(400, translateAuthError(error?.message ?? 'Erro ao criar o cadastro.'))
+
+  // O trigger já cria o perfil pendente e sem acesso; reforçamos aqui por segurança.
+  await admin.from('profiles').update({ full_name, pending: true, active: false }).eq('id', data.user.id)
+  return json(200, { ok: true })
+}

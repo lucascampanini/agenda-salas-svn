@@ -45,6 +45,21 @@ create table if not exists public.profiles (
   created_at timestamptz not null default now()
 );
 
+-- Cadastro pelo link de convite: a pessoa fica pendente (sem acesso) até um admin aprovar.
+alter table public.profiles add column if not exists pending boolean not null default false;
+
+-- ---------------------------------------------------------------------
+-- 2b. Link de convite (linha única). code nulo = convites desligados.
+--     Só administradores leem/alteram; a Edge Function valida o código.
+-- ---------------------------------------------------------------------
+create table if not exists public.invite (
+  id         boolean primary key default true check (id),
+  code       text check (code is null or char_length(code) >= 16),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.invite (id) values (true) on conflict (id) do nothing;
+
 -- ---------------------------------------------------------------------
 -- 3. Salas
 -- ---------------------------------------------------------------------
@@ -145,11 +160,17 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, full_name, email, is_admin)
+  -- Toda conta nova nasce SEM acesso (pendente). Quem libera:
+  --   * a Edge Function, quando um admin cria o usuário pelo painel;
+  --   * um admin aprovando um cadastro feito pelo link de convite;
+  --   * o SQL do README, para o primeiro administrador.
+  insert into public.profiles (id, full_name, email, is_admin, pending, active)
   values (
     new.id,
     coalesce(nullif(btrim(new.raw_user_meta_data ->> 'full_name'), ''), split_part(new.email, '@', 1)),
     new.email,
+    false,
+    true,
     false
   )
   on conflict (id) do nothing;
@@ -207,8 +228,19 @@ alter table public.settings enable row level security;
 alter table public.profiles enable row level security;
 alter table public.rooms    enable row level security;
 alter table public.bookings enable row level security;
+alter table public.invite   enable row level security;
 
-revoke all on public.settings, public.profiles, public.rooms, public.bookings from anon;
+revoke all on public.settings, public.profiles, public.rooms, public.bookings, public.invite from anon;
+
+-- invite: só admin vê e troca o código do convite
+drop policy if exists invite_select_admin on public.invite;
+create policy invite_select_admin on public.invite
+  for select to authenticated using ((select public.is_admin()));
+
+drop policy if exists invite_update_admin on public.invite;
+create policy invite_update_admin on public.invite
+  for update to authenticated
+  using ((select public.is_admin())) with check ((select public.is_admin()));
 
 -- settings: leitura para logados; ninguém altera pelo app
 drop policy if exists settings_select on public.settings;
@@ -219,6 +251,11 @@ create policy settings_select on public.settings
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
   for select to authenticated using ((select public.is_active_user()));
+
+-- cada pessoa sempre enxerga o próprio perfil (para o site mostrar "aguardando aprovação")
+drop policy if exists profiles_select_self on public.profiles;
+create policy profiles_select_self on public.profiles
+  for select to authenticated using (id = (select auth.uid()));
 
 -- rooms: todos os ativos veem; só admin cria, renomeia e exclui
 drop policy if exists rooms_select on public.rooms;

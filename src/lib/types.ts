@@ -12,6 +12,7 @@ export interface Profile {
   email: string
   is_admin: boolean
   active: boolean
+  pending: boolean // cadastrou-se pelo link de convite e aguarda aprovação
   created_at: string
 }
 
