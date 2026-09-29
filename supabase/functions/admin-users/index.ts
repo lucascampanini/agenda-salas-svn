@@ -1,13 +1,19 @@
-// Função serverless (Vercel) para gestão de usuários.
-// Roda só no servidor: é o único lugar que conhece a SUPABASE_SERVICE_ROLE_KEY.
-// Toda chamada confere, pelo token de quem chama, se a pessoa é administradora ativa.
+// Edge Function do Supabase para gestão de usuários (roda no servidor do Supabase).
+// A SUPABASE_SERVICE_ROLE_KEY é injetada automaticamente pelo Supabase aqui dentro
+// e nunca vai para o navegador. Toda chamada confere se quem chama é admin ativo.
 
-import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2'
 
-const SUPABASE_URL = process.env.SUPABASE_URL ?? process.env.VITE_SUPABASE_URL
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
+const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
 
 const BAN_FOREVER = '876000h' // ~100 anos
+
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
 
 type Body =
   | { action: 'create'; email: string; password: string; full_name: string; is_admin?: boolean }
@@ -19,7 +25,7 @@ type Body =
 function json(status: number, body: unknown) {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+    headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
   })
 }
 
@@ -51,9 +57,12 @@ async function requireAdmin(admin: SupabaseClient, req: Request) {
   return { callerId: userData.user.id }
 }
 
-export async function POST(req: Request) {
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
+  if (req.method !== 'POST') return fail(405, 'Método não permitido.')
+
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    return fail(500, 'Servidor sem configuração do Supabase (variáveis de ambiente ausentes).')
+    return fail(500, 'Função sem configuração do Supabase.')
   }
 
   const admin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
@@ -137,4 +146,4 @@ export async function POST(req: Request) {
     default:
       return fail(400, 'Ação desconhecida.')
   }
-}
+})

@@ -1,12 +1,14 @@
 # Agenda de Salas — SVN Investimentos (Campo Grande/MS)
 
-Sistema de reserva das salas de reunião do escritório. Vite + React + TypeScript, Supabase (banco, login e tempo real) e Vercel (site e função serverless).
+Sistema de reserva das salas de reunião do escritório. Vite + React + TypeScript, publicado no **GitHub Pages**: https://lucascampanini.github.io/agenda-salas-svn/
+
+O Supabase cuida do banco, do login, do tempo real e da Edge Function `admin-users`.
 
 As regras críticas moram **no banco**, não só na tela:
 
 - **Sem sobreposição:** exclusion constraint `bookings_no_overlap` (btree_gist + `tstzrange &&`).
 - **Dias e horários válidos:** o trigger `validate_booking` só aceita segunda a sexta, dentro do horário de funcionamento, em blocos certos e nunca no passado.
-- **Permissões:** Row Level Security. Usuário comum só cria e cancela as próprias reservas; só admin mexe em salas; perfis só mudam pela função `/api/admin-users`, que usa a service role key no servidor.
+- **Permissões:** Row Level Security. Usuário comum só cria e cancela as próprias reservas; só admin mexe em salas; perfis só mudam pela Edge Function `admin-users`, que confere se quem chama é admin e usa a service role key dentro do Supabase. A chave nunca vai para o navegador.
 
 ## Cadastrar usuários
 
@@ -54,21 +56,23 @@ Os dias úteis (segunda a sexta) estão fixos no trigger `validate_booking` e na
 
 Em **Admin → Salas** você cria, renomeia e exclui salas. Excluir uma sala apaga as reservas dela, e a tela avisa quantas reservas futuras serão perdidas antes de confirmar.
 
-## Variáveis de ambiente (Vercel)
+## Publicação e configuração
 
-| Variável | Onde é usada | Observação |
-| --- | --- | --- |
-| `VITE_SUPABASE_URL` | navegador e função | URL do projeto Supabase |
-| `VITE_SUPABASE_ANON_KEY` | navegador | chave pública (anon/publishable); o RLS protege os dados |
-| `SUPABASE_SERVICE_ROLE_KEY` | **só** na função `/api/admin-users` | secreta; **nunca** use o prefixo `VITE_` nela |
+- **Site:** cada push na branch `main` roda o workflow `.github/workflows/deploy.yml`, que gera o build e publica no GitHub Pages.
+- **Chaves públicas:** ficam em GitHub → Settings → Secrets and variables → Actions → **Variables**:
+  - `VITE_SUPABASE_URL`: URL do projeto Supabase;
+  - `VITE_SUPABASE_ANON_KEY`: chave anon/publishable. É pública por design; quem protege os dados é o RLS.
 
-Depois de alterar uma variável na Vercel, faça um novo deploy (Deployments → ⋯ → Redeploy).
+  Depois de mudar uma delas, rode o workflow de novo em Actions → Publicar no GitHub Pages → Run workflow.
+- **Service role key:** não fica em nenhum arquivo nem no GitHub. O Supabase injeta essa chave sozinho na Edge Function.
+- **Edge Function:** o código está em `supabase/functions/admin-users/index.ts`. Para atualizar, vá em Supabase → Edge Functions → `admin-users` → Code, cole o arquivo e clique em **Deploy**.
 
 ## Estrutura
 
 ```
 supabase/schema.sql      script completo do banco (pode rodar mais de uma vez)
-api/admin-users.ts       função serverless: criar/desativar usuários, admin, senha
+supabase/functions/admin-users/index.ts   Edge Function: criar/desativar usuários, admin, senha
+.github/workflows/deploy.yml   publicação automática no GitHub Pages
 src/App.tsx              sessão, carregamento de dados, tempo real, navegação
 src/components/          grade do dia, formulário, painel lateral, admin
 src/lib/time.ts          conversões de fuso (America/Campo_Grande)
@@ -78,8 +82,8 @@ src/lib/time.ts          conversões de fuso (America/Campo_Grande)
 
 ```bash
 npm install
-cp .env.example .env.local   # preencha as três variáveis
-npx vercel dev               # sobe o site e a função /api juntos
+cp .env.example .env.local   # preencha a URL e a chave anon
+npm run dev
 ```
 
-Com `npm run dev` só a interface roda: a criação de usuários (que depende de `/api`) não funciona nesse modo.
+O painel de usuários chama a Edge Function publicada no Supabase, então funciona igual em modo local.

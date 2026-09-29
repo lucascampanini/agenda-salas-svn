@@ -1,20 +1,13 @@
+import { FunctionsHttpError } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 
-/** Chama a função serverless /api/admin-users com o token da sessão atual. */
+/** Chama a Edge Function "admin-users" do Supabase com a sessão atual. */
 export async function adminApi(body: Record<string, unknown>): Promise<string | null> {
-  const { data } = await supabase.auth.getSession()
-  const token = data.session?.access_token
-  if (!token) return 'Sua sessão expirou. Entre novamente.'
-  try {
-    const res = await fetch('/api/admin-users', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    })
-    const json = (await res.json().catch(() => ({}))) as { error?: string }
-    if (!res.ok) return json.error ?? `Erro no servidor (${res.status}).`
-    return null
-  } catch {
-    return 'Sem conexão com o servidor. Verifique sua internet e tente de novo.'
+  const { error } = await supabase.functions.invoke('admin-users', { body })
+  if (!error) return null
+  if (error instanceof FunctionsHttpError) {
+    const json = (await error.context.json().catch(() => ({}))) as { error?: string }
+    return json.error ?? `Erro no servidor (${error.context.status}).`
   }
+  return 'Não foi possível falar com o servidor. Verifique sua internet e tente de novo.'
 }
