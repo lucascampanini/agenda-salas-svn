@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
 import type { Booking, Room, Settings } from '../lib/types'
 import { longDate, minutesToLabel, utcToZoned } from '../lib/time'
 import { cancelBooking } from '../lib/bookings'
@@ -11,13 +12,25 @@ interface Props {
   meId: string
   isAdmin: boolean
   onClose: () => void
+  onInvite: () => void
   onCancelled: (message: string) => void
 }
 
-export function BookingDetails({ booking, rooms, settings, meId, isAdmin, onClose, onCancelled }: Props) {
+export function BookingDetails({ booking, rooms, settings, meId, isAdmin, onClose, onInvite, onCancelled }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // reserva criada por um agendamento com especialista?
+  const [linked, setLinked] = useState(false)
+
+  useEffect(() => {
+    supabase
+      .from('specialist_bookings')
+      .select('id')
+      .eq('room_booking_id', booking.id)
+      .maybeSingle()
+      .then(({ data }) => setLinked(!!data))
+  }, [booking.id])
 
   const tz = settings.timezone
   const s = utcToZoned(new Date(booking.starts_at), tz)
@@ -52,6 +65,9 @@ export function BookingDetails({ booking, rooms, settings, meId, isAdmin, onClos
             {canCancel && (
               <button className="btn btn-danger" onClick={() => setConfirming(true)}>Cancelar reserva</button>
             )}
+            {mine && new Date(booking.ends_at) > new Date() && (
+              <button className="btn" onClick={onInvite}>Convite</button>
+            )}
             <button className="btn btn-primary" onClick={onClose}>Fechar</button>
           </>
         )
@@ -67,6 +83,11 @@ export function BookingDetails({ booking, rooms, settings, meId, isAdmin, onClos
         <dt>Reservado por</dt>
         <dd>{mine ? `Você (${booking.profiles?.full_name ?? ''})` : booking.profiles?.full_name ?? '—'}</dd>
       </dl>
+      {linked && (
+        <p className="small muted" style={{ margin: 0 }}>
+          Sala reservada por um agendamento com especialista. Cancelar esta reserva cancela também o horário com o especialista.
+        </p>
+      )}
       {confirming && (
         <p style={{ margin: 0 }}>
           {mine

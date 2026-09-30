@@ -84,6 +84,23 @@ export function timeToMinutes(t: string) {
   return h * 60 + m
 }
 
+/** "09:07" -> 547; texto incompleto ou inválido -> null */
+export function parseTime(text: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})/.exec(text.trim())
+  if (!m) return null
+  const h = Number(m[1])
+  const min = Number(m[2])
+  if (h > 23 || min > 59) return null
+  return h * 60 + min
+}
+
+export function formatDuration(min: number) {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h === 0) return `${m} min`
+  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
+}
+
 /** 480 -> "08:00" */
 export function minutesToLabel(min: number) {
   return `${pad(Math.floor(min / 60))}:${pad(Math.round(min % 60))}`

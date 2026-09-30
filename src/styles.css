@@ -408,3 +408,63 @@ button, input, select { font: inherit; color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Especialistas ---------- */
+.mainnav { margin-bottom: 14px; }
+.empty-card { padding: 40px 20px; text-align: center; color: var(--text-muted); }
+.visit-tabs { display: flex; gap: 8px; overflow-x: auto; margin-bottom: 14px; padding-bottom: 2px; }
+.visit-tab {
+  flex: none; display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  min-width: 170px; max-width: 240px; padding: 9px 12px; text-align: left;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--surface); cursor: pointer;
+}
+.visit-tab:hover { background: var(--surface-2); }
+.visit-tab .vt-date { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.visit-tab .vt-name { font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.visit-tab .vt-meta { font-size: 12.5px; color: var(--text-muted); }
+.visit-tab.is-selected { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.visit-tab.is-selected .vt-date, .visit-tab.is-selected .vt-meta { color: inherit; opacity: 0.75; }
+
+.visit-head { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; padding: 16px 18px; margin-bottom: 14px; }
+.visit-head .grow { flex: 1; min-width: 200px; }
+.visit-head h2 { margin: 0; font-size: 18px; letter-spacing: -0.01em; }
+.visit-when { margin-top: 4px; font-size: 14px; }
+.visit-notes { margin: 8px 0 0; padding: 8px 10px; background: var(--surface-2); border-radius: var(--radius-sm); }
+
+.gaps { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
+.gap-chip {
+  height: 30px; padding: 0 11px; border-radius: 999px; cursor: pointer;
+  border: 1px dashed var(--border-strong); background: var(--surface-2);
+  font-size: 13.5px; font-weight: 500; font-variant-numeric: tabular-nums;
+}
+.gap-chip:hover { background: var(--surface-3); border-style: solid; }
+
+.choice { border: 0; margin: 0; padding: 0; min-width: 0; }
+.people-picker { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.people-picker .input { height: 36px; }
+.people-list {
+  list-style: none; margin: 0; padding: 4px 10px; width: 100%;
+  max-height: 188px; overflow: auto;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--surface);
+}
+.people-list li { padding: 5px 0; border-top: 1px solid var(--border); }
+.people-list li:first-child { border-top: 0; }
+.people-list .check { align-items: flex-start; }
+.people-list .check input { margin-top: 2px; flex: none; }
+.people-list .grow { overflow-wrap: anywhere; }
+.choice legend { font-size: 13px; font-weight: 500; color: var(--text-muted); padding: 0; margin-bottom: 5px; }
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.seg label {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); cursor: pointer; font-size: 14px;
+}
+.seg label.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.seg label:has(input:disabled) { opacity: 0.5; cursor: not-allowed; }
+.seg input { accent-color: var(--ink); margin: 0; }
+.textarea { height: auto; padding: 9px 12px; resize: vertical; font: inherit; }
+a.btn { text-decoration: none; }
+
+@media (max-width: 640px) {
+  .visit-tab { min-width: 150px; }
+}

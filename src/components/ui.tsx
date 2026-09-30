@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export function Modal({
   title,
@@ -31,7 +32,8 @@ export function Modal({
     }
   }, [])
 
-  return (
+  // Renderiza direto no <body>: dentro do painel lateral (position: sticky) a grade ficava por cima da janela
+  return createPortal(
     <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" role="dialog" aria-modal="true" aria-labelledby={labelledBy} ref={ref}>
         <div className="modal-head">
@@ -43,7 +45,8 @@ export function Modal({
         <div className="modal-body">{children}</div>
         {footer && <div className="modal-foot">{footer}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

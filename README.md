@@ -68,6 +68,26 @@ Os dias úteis (segunda a sexta) estão fixos no trigger `validate_booking` e na
 
 Em **Admin → Salas** você cria, renomeia e exclui salas. Excluir uma sala apaga as reservas dela, e a tela avisa quantas reservas futuras serão perdidas antes de confirmar.
 
+## Agenda de especialistas
+
+Aba **Especialistas**: um administrador cria a agenda de um especialista que vem a Campo Grande (**+ Nova agenda**) informando a chegada (dia e hora) e a saída (dia e hora). Nos dias da visita o atendimento vai das 07:00 às 19:00, começando na chegada no primeiro dia e terminando na saída no último. Fim de semana só entra se marcado. A grade funciona como a de salas: cada assessor clica num horário livre e escolhe início e fim.
+
+- **No escritório:** a pessoa escolhe a sala, que é reservada na agenda de salas **na mesma transação** (função `book_specialist`). Cancelar o horário com o especialista libera a sala; cancelar a sala pela agenda de salas cancela também o horário com o especialista.
+- **Fora do escritório:** sem sala; o local é opcional.
+- As regras ficam no banco (`supabase/especialistas.sql`): o especialista não atende duas pessoas ao mesmo tempo, os horários respeitam chegada, saída e o horário diário, e agendar e cancelar só é possível pelas funções `book_specialist` e `cancel_specialist_booking`.
+- Para mudar o horário diário de uma visita: `update public.specialist_visits set day_start = '08:00', day_end = '18:00' where id = '...';`
+
+O script só acrescenta tabelas e funções. Para aplicar ou atualizar: `npx supabase db query --linked -f supabase/especialistas.sql` (depois do `schema.sql`).
+
+## Convite pelo Outlook
+
+Depois de reservar uma sala ou agendar com um especialista, abre a janela **Enviar convite**:
+
+- **Abrir no Outlook** abre o Outlook na web (Microsoft 365) com a reunião preenchida (título, horário, local e convidados). A pessoa confere e clica em Enviar; o convite sai do e-mail dela.
+- **Baixar .ics** gera um arquivo para o Outlook do computador, o Google Agenda ou o celular.
+
+Administradores escolhem os convidados da reserva de sala numa lista com todos os usuários cadastrados, além dos e-mails digitados. No especialista, o e-mail dele (se cadastrado) entra automaticamente. O envio não é automático: não há servidor de e-mail. O botão **Convite** nos detalhes da reserva abre o convite de novo (sem os convidados, que não ficam guardados).
+
 ## Publicação e configuração
 
 - **Site:** cada push na branch `main` roda o workflow `.github/workflows/deploy.yml`, que gera o build e publica no GitHub Pages.

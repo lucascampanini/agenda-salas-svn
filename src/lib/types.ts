@@ -40,3 +40,30 @@ export const DEFAULT_SETTINGS: Settings = {
   slot_minutes: 30,
   booking_step_minutes: 1,
 }
+
+export interface SpecialistVisit {
+  id: string
+  specialist_name: string
+  specialty: string
+  specialist_email: string | null
+  starts_at: string // chegada
+  ends_at: string // saída
+  day_start: string // "07:00:00": atendimento nos dias da visita
+  day_end: string // "19:00:00"
+  include_weekends: boolean
+  notes: string
+}
+
+export interface SpecialistBooking {
+  id: string
+  visit_id: string
+  user_id: string
+  starts_at: string
+  ends_at: string
+  subject: string
+  location: 'office' | 'external'
+  room_booking_id: string | null
+  external_place: string
+  guest_emails: string[]
+  profiles: { full_name: string; email: string } | null
+}

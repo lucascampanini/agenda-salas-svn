@@ -1,9 +1,11 @@
 import { useMemo, useState, type FormEvent } from 'react'
 import { supabase } from '../lib/supabase'
 import { friendlyError } from '../lib/errors'
-import type { Booking, Room, Settings } from '../lib/types'
-import { isoWeekday, minutesToLabel, timeToMinutes, todayYmd, utcToZoned, zonedToUtc } from '../lib/time'
+import type { Booking, Profile, Room, Settings } from '../lib/types'
+import { formatDuration, isoWeekday, minutesToLabel, parseTime, timeToMinutes, todayYmd, utcToZoned, zonedToUtc } from '../lib/time'
+import { parseEmails, roomInvite, type InviteEvent } from '../lib/invite'
 import { Modal } from './ui'
+import { EmailPicker } from './EmailPicker'
 
 interface Props {
   rooms: Room[]
@@ -12,11 +14,13 @@ interface Props {
   initial: { roomId: string; day: string; start: number; end: number }
   /** Reservas já carregadas do dia exibido, para avisar conflito antes de enviar */
   knownBookings: { day: string; items: Booking[] }
+  /** Colegas cadastrados para o convite (só para administradores) */
+  people?: Profile[]
   onClose: () => void
-  onSaved: (message: string) => void
+  onSaved: (message: string, invite: InviteEvent) => void
 }
 
-export function BookingForm({ rooms, settings, meId, initial, knownBookings, onClose, onSaved }: Props) {
+export function BookingForm({ rooms, settings, meId, initial, knownBookings, people, onClose, onSaved }: Props) {
   const open = timeToMinutes(settings.open_time)
   const close = timeToMinutes(settings.close_time)
   const step = settings.slot_minutes
@@ -30,6 +34,8 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
   const start = parseTime(startText)
   const end = parseTime(endText)
   const [subject, setSubject] = useState('')
+  const [picked, setPicked] = useState<string[]>([])
+  const [extra, setExtra] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -91,19 +97,25 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
     const v = validate()
     if (v) return setError(v)
     if (start === null || end === null) return
+    const emails = parseEmails(extra)
+    if (emails.invalid.length) return setError(`E-mail inválido: ${emails.invalid[0]}`)
     setBusy(true)
     setError(null)
-    const { error } = await supabase.from('bookings').insert({
+    const row = {
       room_id: roomId,
       user_id: meId,
       starts_at: zonedToUtc(day, start, tz).toISOString(),
       ends_at: zonedToUtc(day, end, tz).toISOString(),
       subject: subject.trim(),
-    })
+    }
+    const { data, error } = await supabase.from('bookings').insert(row).select('id').single()
     setBusy(false)
     if (error) return setError(friendlyError(error))
     const room = rooms.find((r) => r.id === roomId)?.name ?? 'Sala'
-    onSaved(`Reserva confirmada: ${room}, ${minutesToLabel(start)}–${minutesToLabel(end)}.`)
+    onSaved(
+      `Reserva confirmada: ${room}, ${minutesToLabel(start)}–${minutesToLabel(end)}.`,
+      roomInvite({ ...row, id: data.id as string }, room, [...picked, ...emails.valid]),
+    )
   }
 
   return (
@@ -195,25 +207,16 @@ export function BookingForm({ rooms, settings, meId, initial, knownBookings, onC
             required
           />
         </label>
+        <EmailPicker
+          people={people?.filter((p) => p.id !== meId)}
+          picked={picked}
+          onPickedChange={setPicked}
+          extra={extra}
+          onExtraChange={setExtra}
+          hint="Depois de reservar, o convite abre no seu Outlook."
+        />
         {error && <div className="alert" role="alert">{error}</div>}
       </form>
     </Modal>
   )
-}
-
-/** "09:07" -> 547; texto incompleto ou inválido -> null */
-function parseTime(text: string): number | null {
-  const m = /^(\d{1,2}):(\d{2})/.exec(text.trim())
-  if (!m) return null
-  const h = Number(m[1])
-  const min = Number(m[2])
-  if (h > 23 || min > 59) return null
-  return h * 60 + min
-}
-
-function formatDuration(min: number) {
-  const h = Math.floor(min / 60)
-  const m = min % 60
-  if (h === 0) return `${m} min`
-  return m === 0 ? `${h}h` : `${h}h${String(m).padStart(2, '0')}`
 }

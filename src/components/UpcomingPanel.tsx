@@ -10,10 +10,11 @@ interface Props {
   settings: Settings
   loading: boolean
   onOpenDay: (ymd: string) => void
+  onInvite: (b: Booking) => void
   onCancelled: (message: string) => void
 }
 
-export function UpcomingPanel({ items, rooms, settings, loading, onOpenDay, onCancelled }: Props) {
+export function UpcomingPanel({ items, rooms, settings, loading, onOpenDay, onInvite, onCancelled }: Props) {
   const [target, setTarget] = useState<Booking | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -67,6 +68,9 @@ export function UpcomingPanel({ items, rooms, settings, loading, onOpenDay, onCa
                 <div className="up-subject">{b.subject}</div>
                 <div className="up-room">{roomName(b.room_id)}</div>
                 <div className="up-actions">
+                  <button className="btn btn-sm" onClick={() => onInvite(b)}>
+                    Convite
+                  </button>
                   <button className="btn btn-sm btn-danger" onClick={() => { setError(null); setTarget(b) }}>
                     Cancelar
                   </button>

@@ -22,6 +22,9 @@ import { BookingForm } from './components/BookingForm'
 import { BookingDetails } from './components/BookingDetails'
 import { UpcomingPanel } from './components/UpcomingPanel'
 import { AdminPanel } from './components/AdminPanel'
+import { SpecialistsView } from './components/Specialists'
+import { InviteModal } from './components/InviteModal'
+import { roomInvite, type InviteEvent } from './lib/invite'
 import { IconLeft, IconLogout, IconMoon, IconRight, IconSettings, IconSun, Toast } from './components/ui'
 
 const BOOKING_COLUMNS = 'id, room_id, user_id, starts_at, ends_at, subject, profiles(full_name)'
@@ -110,6 +113,13 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
   const [day, setDay] = useState(() => nearestWeekday(todayYmd(DEFAULT_SETTINGS.timezone)))
   const [now, setNow] = useState(() => new Date())
   const [view, setView] = useState<'agenda' | 'admin'>('agenda')
+  const [section, setSection] = useState<'salas' | 'especialistas'>(() => {
+    try {
+      return localStorage.getItem('section') === 'especialistas' ? 'especialistas' : 'salas'
+    } catch {
+      return 'salas'
+    }
+  })
 
   const [rooms, setRooms] = useState<Room[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
@@ -120,6 +130,7 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
 
   const [creating, setCreating] = useState<{ roomId: string; day: string; start: number; end: number } | null>(null)
   const [selected, setSelected] = useState<Booking | null>(null)
+  const [invite, setInvite] = useState<InviteEvent | null>(null)
   const [toast, setToast] = useState<{ text: string; kind: 'ok' | 'error'; id: number } | null>(null)
 
   const notify = useCallback((text: string, kind: 'ok' | 'error' = 'ok') => setToast({ text, kind, id: Date.now() }), [])
@@ -206,9 +217,20 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
   const nowMinutes = utcToZoned(now, tz).minutes
   const days = weekDays(day)
 
+  function changeSection(next: 'salas' | 'especialistas') {
+    setSection(next)
+    try { localStorage.setItem('section', next) } catch { /* sem storage */ }
+    if (next === 'salas') load()
+  }
+
   function goToday() {
     setDay(nearestWeekday(today))
     setView('agenda')
+  }
+
+  function openInvite(b: Booking) {
+    setSelected(null)
+    setInvite(roomInvite(b, rooms.find((r) => r.id === b.room_id)?.name ?? 'Sala', []))
   }
 
   function afterChange(message: string) {
@@ -262,6 +284,19 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
           <AdminPanel rooms={rooms} profiles={profiles} meId={me.id} onBack={() => setView('agenda')} notify={notify} reload={load} />
         ) : (
           <>
+            <div className="tabs mainnav" role="tablist" aria-label="Agendas">
+              <button role="tab" aria-selected={section === 'salas'} className={`tab ${section === 'salas' ? 'is-active' : ''}`} onClick={() => changeSection('salas')}>
+                Salas
+              </button>
+              <button role="tab" aria-selected={section === 'especialistas'} className={`tab ${section === 'especialistas' ? 'is-active' : ''}`} onClick={() => changeSection('especialistas')}>
+                Especialistas
+              </button>
+            </div>
+
+            {section === 'especialistas' ? (
+              <SpecialistsView me={me} rooms={rooms} settings={settings} notify={notify} />
+            ) : (
+            <>
             <div className="toolbar">
               <h1 className="toolbar-title">{weekRangeLabel(day)}</h1>
               <div className="toolbar-spacer" />
@@ -328,9 +363,12 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
                 settings={settings}
                 loading={loading}
                 onOpenDay={(d) => setDay(d)}
+                onInvite={openInvite}
                 onCancelled={afterChange}
               />
             </div>
+            </>
+            )}
           </>
         )}
       </main>
@@ -342,11 +380,15 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
           meId={me.id}
           initial={creating}
           knownBookings={{ day, items: bookings }}
+          people={me.is_admin ? profiles : undefined}
           onClose={() => {
             setCreating(null)
             load()
           }}
-          onSaved={afterChange}
+          onSaved={(message, ev) => {
+            afterChange(message)
+            setInvite(ev)
+          }}
         />
       )}
 
@@ -358,9 +400,12 @@ function Agenda({ me, onProfileChange }: { me: Profile; onProfileChange: (p: Pro
           meId={me.id}
           isAdmin={me.is_admin}
           onClose={() => setSelected(null)}
+          onInvite={() => openInvite(selected)}
           onCancelled={afterChange}
         />
       )}
+
+      {invite && <InviteModal ev={invite} onClose={() => setInvite(null)} />}
 
       {toast && <Toast key={toast.id} text={toast.text} kind={toast.kind} onDone={clearToast} />}
     </>
